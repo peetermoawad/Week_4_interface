@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AquaSeg — Planetary Computer AI Water Segmentation</title>
+  <meta name="description" content="AI-powered water body segmentation from 12-channel Sentinel-2 satellite imagery using Microsoft Planetary Computer and Deep Learning.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <style>
+    :root {
+      --bg: #070d17;
+      --surface-1: #0e1726;
+      --surface-2: #152238;
+      --surface-glass: rgba(14, 23, 38, 0.75);
+      --border: rgba(56, 189, 248, 0.18);
+      --border-hover: rgba(56, 189, 248, 0.45);
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.25);
+      --accent2: #06b6d4;
+      --water-blue: #2563eb;
+      --water-cyan: #38bdf8;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+      --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      line-height: 1.5;
+    }
+
+    /* Ambient background grid */
+    .bg-canvas {
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(circle at 15% 10%, rgba(56, 189, 248, 0.08) 0%, transparent 45%),
+        radial-gradient(circle at 85% 85%, rgba(6, 182, 212, 0.06) 0%, transparent 45%),
+        radial-gradient(circle at 50% 50%, rgba(37, 99, 235, 0.04) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Header Nav */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background: rgba(7, 13, 23, 0.85);
+      border-bottom: 1px solid var(--border);
+      padding: 0.9rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .brand-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, #0284c7, #06b6d4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 16px var(--accent-glow);
+    }
+
+    .brand-icon svg {
+      width: 24px;
+      height: 24px;
+      fill: none;
+      stroke: #fff;
+      stroke-width: 2;
+    }
+
+    .brand-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #fff 40%, var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 0.2rem 0.55rem;
+      border-radius: 9999px;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .nav-tabs {
+      display: flex;
+      align-items: center;
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      padding: 0.25rem;
+      gap: 0.25rem;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.5rem 1.1rem;
+      border-radius: 9999px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+    }
+
+    .tab-btn.active {
+      background: linear-gradient(135deg, #0284c7, #025091);
+      color: #fff;
+      box-shadow: 0 0 12px rgba(2, 132, 199, 0.4);
+    }
+
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.9); }
+    }
+
+    /* Main Container */
+    main {
+      position: relative;
+      z-index: 1;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    /* Tab content panes */
+    .tab-pane {
+      display: none;
+    }
+
+    .tab-pane.active {
+      display: block;
+      animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Hero header */
+    .hero {
+      margin-bottom: 2rem;
+    }
+
+    .hero-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--accent);
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: 9999px;
+      padding: 0.3rem 0.85rem;
+      margin-bottom: 0.8rem;
+    }
+
+    .hero-title {
+      font-size: 2.3rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      margin-bottom: 0.5rem;
+    }
+
+    .hero-title span {
+      background: linear-gradient(135deg, var(--accent), #06b6d4, #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-desc {
+      color: var(--text-muted);
+      font-size: 1rem;
+      max-width: 760px;
+    }
+
+    /* Planetary Layout Grid */
+    .planetary-grid {
+      display: grid;
+      grid-template-columns: 1.35fr 1fr;
+      gap: 1.75rem;
+      align-items: start;
+    }
+
+    @media (max-width: 1024px) {
+      .planetary-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--surface-glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.2rem;
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      letter-spacing: -0.01em;
+    }
+
+    .card-title svg {
+      width: 20px;
+      height: 20px;
+      stroke: var(--accent);
+    }
+
+    /* Map Box */
+    #map-container {
+      width: 100%;
+      height: 480px;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      position: relative;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      background: #0b1424;
+    }
+
+    /* Map overlay coordinates badge */
+    .map-coords-badge {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      z-index: 800;
+      background: rgba(7, 13, 23, 0.9);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.45rem 0.8rem;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--accent);
+      pointer-events: none;
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* Quick Preset chips */
+    .presets-container {
+      margin-top: 1.2rem;
+    }
+
+    .preset-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      margin-bottom: 0.6rem;
+    }
+
+    .preset-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .preset-chip {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      padding: 0.4rem 0.85rem;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .preset-chip:hover {
+      border-color: var(--accent);
+      color: var(--text);
+      background: rgba(56, 189, 248, 0.12);
+      transform: translateY(-1px);
+    }
+
+    /* Parameters Controls */
+    .controls-panel {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 1.2rem;
+      padding-top: 1.2rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .input-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .input-field {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.6rem 0.9rem;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input-field:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+
+    /* Primary Action Button */
+    .btn-primary {
+      width: 100%;
+      margin-top: 1.2rem;
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.98rem;
+      font-weight: 700;
+      padding: 0.95rem 1.5rem;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      box-shadow: 0 4px 16px rgba(2, 132, 199, 0.35);
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #38bdf8, #0284c7);
+      box-shadow: 0 6px 20px rgba(56, 189, 248, 0.45);
+      transform: translateY(-2px);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Results Dashboard Panel */
+    .results-empty {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: var(--text-dim);
+    }
+
+    .results-empty svg {
+      width: 64px;
+      height: 64px;
+      stroke: var(--text-dim);
+      margin-bottom: 1rem;
+      opacity: 0.6;
+    }
+
+    .results-empty h3 {
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+    }
+
+    .results-empty p {
+      font-size: 0.85rem;
+    }
+
+    /* Active Result View */
+    .result-content {
+      display: none;
+    }
+
+    .result-content.show {
+      display: block;
+      animation: fadeIn 0.4s ease;
+    }
+
+    /* Water status banner */
+    .water-banner {
+      border-radius: var(--radius-md);
+      padding: 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+      border: 1px solid;
+    }
+
+    .water-banner.has-water {
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(6, 182, 212, 0.15));
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+
+    .water-banner.no-water {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(245, 158, 11, 0.1));
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    .water-status-text h4 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+
+    .water-banner.has-water .water-status-text h4 {
+      color: #60a5fa;
+    }
+
+    .water-banner.no-water .water-status-text h4 {
+      color: #f87171;
+    }
+
+    .water-status-text p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 0.2rem;
+    }
+
+    .water-pct-badge {
+      font-family: var(--font-mono);
+      font-size: 1.8rem;
+      font-weight: 800;
+      padding: 0.3rem 0.8rem;
+      border-radius: var(--radius-sm);
+    }
+
+    .water-banner.has-water .water-pct-badge {
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.15);
+    }
+
+    .water-banner.no-water .water-pct-badge {
+      color: #fca5a5;
+      background: rgba(239, 68, 68, 0.15);
+    }
+
+    /* Metric stats grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .metric-card {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.85rem;
+    }
+
+    .metric-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+    }
+
+    .metric-val {
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-top: 0.25rem;
+    }
+
+    /* Visualizer display */
+    .visualizer-box {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      background: #000;
+      margin-bottom: 1.2rem;
+    }
+
+    .visualizer-tabs {
+      display: flex;
+      background: var(--surface-1);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .viz-tab-btn {
+      flex: 1;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.65rem 0.5rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .viz-tab-btn.active {
+      color: var(--accent);
+      background: var(--surface-2);
+      border-bottom: 2px solid var(--accent);
+    }
+
+    .image-viewport {
+      position: relative;
+      width: 100%;
+      height: 320px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #040810;
+    }
+
+    .image-viewport img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      image-rendering: pixelated;
+    }
+
+    .viz-overlay-slider {
+      padding: 0.6rem 1rem;
+      background: var(--surface-1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .viz-overlay-slider input {
+      flex: 1;
+      accent-color: var(--accent);
+    }
+
+    /* Scene Metadata table */
+    .metadata-list {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem 1rem;
+      font-size: 0.78rem;
+    }
+
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.35rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .meta-row:last-child {
+      border-bottom: none;
+    }
+
+    .meta-key {
+      color: var(--text-dim);
+    }
+
+    .meta-val {
+      font-family: var(--font-mono);
+      color: var(--text);
+    }
+
+    /* Progress Tracker Modal */
+    .progress-box {
+      margin-top: 1rem;
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 1.25rem;
+      display: none;
+    }
+
+    .progress-box.show {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .progress-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .spinner {
+      width: 22px;
+      height: 22px;
+      border: 3px solid rgba(56, 189, 248, 0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .progress-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.82rem;
+      color: var(--text-dim);
+    }
+
+    .step-item.active {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .step-item.done {
+      color: var(--success);
+    }
+
+    .step-icon {
+      width: 16px;
+      height: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* File Upload Pane Styles */
+    .dropzone-box {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-lg);
+      padding: 3.5rem 2rem;
+      text-align: center;
+      background: rgba(14, 23, 38, 0.4);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .dropzone-box:hover, .dropzone-box.dragover {
+      border-color: var(--accent);
+      background: rgba(56, 189, 248, 0.05);
+    }
+
+    .dropzone-icon {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 1.2rem;
+      border-radius: 50%;
+      background: var(--surface-2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+    }
+
+    .dropzone-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+    }
+
+    .dropzone-subtitle {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 1.5rem;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    /* Code block in API docs */
+    .code-snippet {
+      background: #040810;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: #bae6fd;
+      overflow-x: auto;
+      margin-top: 0.6rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-canvas"></div>
+
+  <!-- Header -->
+  <header>
+    <a href="#" class="brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+      </div>
+      <div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <h1 class="brand-title">AquaSeg AI</h1>
+          <span class="brand-badge">Planetary STAC</span>
+        </div>
+      </div>
+    </a>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" onclick="switchTab('planetary')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        Planetary Globe
+      </button>
+      <button class="tab-btn" onclick="switchTab('upload')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        File Upload (.TIF)
+      </button>
+      <button class="tab-btn" onclick="switchTab('api-docs')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        API Endpoints
+      </button>
+    </nav>
+
+    <!-- Health indicator -->
+    <div class="header-status">
+      <div class="status-dot"></div>
+      <span id="health-label">Model Weights Active</span>
+    </div>
+  </header>
+
+  <!-- Main View -->
+  <main>
+
+    <!-- ── TAB 1: PLANETARY COMPUTER GLOBE ── -->
+    <section id="tab-planetary" class="tab-pane active">
+      <div class="hero">
+        <div class="hero-tag">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          Microsoft Planetary Computer Integration
+        </div>
+        <h2 class="hero-title">Live Global Water Body <span>Detection & Segmentation</span></h2>
+        <p class="hero-desc">Click any coordinate on the interactive world map below. The API queries Microsoft Planetary Computer to fetch real Copernicus Sentinel-2 multispectral bands and executes neural water segmentation.</p>
+      </div>
+
+      <div class="planetary-grid">
+        <!-- Map and Coordinates Card -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+              Select Target Location
+            </h3>
+            <span style="font-size: 0.78rem; color: var(--text-muted);">Click anywhere to move pin</span>
+          </div>
+
+          <!-- Leaflet Map Container -->
+          <div id="map-container">
+            <div id="map"></div>
+            <div class="map-coords-badge">
+              Target: <span id="coords-display">30.5600° N, 32.2800° E</span>
+            </div>
+          </div>
+
+          <!-- Quick Presets -->
+          <div class="presets-container">
+            <div class="preset-label">Quick Presets (Egypt & Global)</div>
+            <div class="preset-chips">
+              <button class="preset-chip" onclick="setPreset(30.56, 32.28, 'Suez Canal / Lake Timsah')">🚢 Suez Canal (Ismailia)</button>
+              <button class="preset-chip" onclick="setPreset(23.97, 32.88, 'Aswan / Lake Nasser')">🌊 Lake Nasser (Aswan)</button>
+              <button class="preset-chip" onclick="setPreset(31.21, 29.95, 'Alexandria Coast')">🏖️ Alexandria Shore</button>
+              <button class="preset-chip" onclick="setPreset(27.50, 28.50, 'Western Desert (Control: No Water)')">🏜️ Western Desert (Dry)</button>
+              <button class="preset-chip" onclick="setPreset(-1.00, 33.00, 'Lake Victoria')">🏞️ Lake Victoria</button>
+              <button class="preset-chip" onclick="setPreset(37.80, -122.40, 'San Francisco Bay')">🌉 SF Bay (USA)</button>
+            </div>
+          </div>
+
+          <!-- Search controls -->
+          <div class="controls-panel">
+            <div class="input-group">
+              <label class="input-label">Latitude</label>
+              <input type="number" id="input-lat" class="input-field" step="0.0001" value="30.5600" onchange="updateMarkerFromInputs()">
+            </div>
+            <div class="input-group">
+              <label class="input-label">Longitude</label>
+              <input type="number" id="input-lon" class="input-field" step="0.0001" value="32.2800" onchange="updateMarkerFromInputs()">
+            </div>
+          </div>
+
+          <!-- Action Button -->
+          <button id="btn-fetch-pc" class="btn-primary" onclick="runPlanetaryInference()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/></svg>
+            Fetch Sentinel-2 & Run Water Inference
+          </button>
+
+          <!-- Loading state -->
+          <div id="pc-progress" class="progress-box">
+            <div class="progress-header">
+              <div class="spinner"></div>
+              <div>
+                <div style="font-weight: 700; font-size: 0.95rem;">Querying Planetary Computer STAC...</div>
+                <div style="font-size: 0.78rem; color: var(--text-muted);">Please wait while Sentinel-2 multispectral COGs are streamed</div>
+              </div>
+            </div>
+            <div class="progress-steps">
+              <div class="step-item active" id="step-1">
+                <span class="step-icon">●</span> 1. Querying STAC catalog for recent low-cloud Sentinel-2 scenes
+              </div>
+              <div class="step-item" id="step-2">
+                <span class="step-icon">○</span> 2. Authenticating Azure SAS tokens and reprojecting coordinates
+              </div>
+              <div class="step-item" id="step-3">
+                <span class="step-icon">○</span> 3. Streaming 12-channel multispectral chip (128×128 @ 10m)
+              </div>
+              <div class="step-item" id="step-4">
+                <span class="step-icon">○</span> 4. Running pretrained ResNet-34 U-Net neural inference
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Inference Results Card -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              Segmentation Analysis
+            </h3>
+            <span id="result-status-tag" style="font-size: 0.78rem; color: var(--text-dim);">Ready</span>
+          </div>
+
+          <!-- Empty placeholder -->
+          <div id="results-placeholder" class="results-empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+            <h3>No Location Analyzed Yet</h3>
+            <p>Pick a point on the map or click a preset location to run live satellite inference.</p>
+          </div>
+
+          <!-- Results display -->
+          <div id="results-panel" class="result-content">
+            <!-- Water status banner -->
+            <div id="water-banner" class="water-banner has-water">
+              <div class="water-status-text">
+                <h4 id="banner-title">WATER DETECTED 🌊</h4>
+                <p id="banner-subtitle">Significant surface water body identified in this scene.</p>
+              </div>
+              <div id="banner-pct" class="water-pct-badge">72.9%</div>
+            </div>
+
+            <!-- Stats grid -->
+            <div class="metrics-grid">
+              <div class="metric-card">
+                <div class="metric-label">Water Coverage</div>
+                <div class="metric-val" id="metric-pct">72.99%</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Water Level</div>
+                <div class="metric-val" id="metric-level">High</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Cloud Cover</div>
+                <div class="metric-val" id="metric-cloud">0.1%</div>
+              </div>
+            </div>
+
+            <!-- Image visualizer -->
+            <div class="visualizer-box">
+              <div class="visualizer-tabs">
+                <button class="viz-tab-btn active" onclick="setVizMode('overlay')">Overlay</button>
+                <button class="viz-tab-btn" onclick="setVizMode('mask')">Binary Mask</button>
+                <button class="viz-tab-btn" onclick="setVizMode('satellite')">Satellite RGB</button>
+              </div>
+              <div class="image-viewport">
+                <img id="viz-image" src="" alt="Segmentation result">
+              </div>
+            </div>
+
+            <!-- Scene metadata -->
+            <div class="metadata-list">
+              <div class="meta-row">
+                <span class="meta-key">Scene Acquisition Date:</span>
+                <span class="meta-val" id="meta-date">2026-09-14</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Sentinel-2 Scene ID:</span>
+                <span class="meta-val" id="meta-id" style="font-size: 0.7rem;">S2C_MSIL2A_20260914...</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Platform:</span>
+                <span class="meta-val" id="meta-platform">Sentinel-2</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Spatial Chip Window:</span>
+                <span class="meta-val">128 × 128 px (1.28 × 1.28 km)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── TAB 2: LOCAL FILE UPLOAD (.TIF) ── -->
+    <section id="tab-upload" class="tab-pane">
+      <div class="hero">
+        <div class="hero-tag">Core Task Requirement</div>
+        <h2 class="hero-title">12-Channel GeoTIFF <span>File Upload</span></h2>
+        <p class="hero-desc">Upload any 12-channel multispectral Sentinel-2 .tif image or test with pre-generated samples to obtain high-precision binary water segmentation masks.</p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.75rem;">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Upload GeoTIFF File</h3>
+          </div>
+
+          <div class="dropzone-box" id="dropzone" onclick="document.getElementById('file-input').click()">
+            <div class="dropzone-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </div>
+            <div class="dropzone-title">Drop your .tif file here or click to browse</div>
+            <div class="dropzone-subtitle">Requires 12-band Sentinel-2 GeoTIFF (up to 50MB)</div>
+            <input type="file" id="file-input" class="file-input" accept=".tif,.tiff" onchange="handleFileSelect(this.files[0])">
+          </div>
+
+          <div style="margin-top: 1.5rem;">
+            <div class="preset-label">Test with Pre-generated Samples</div>
+            <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+              <button class="preset-chip" onclick="testSample('sample_high_water.tif')">💧 sample_high_water.tif (~70%)</button>
+              <button class="preset-chip" onclick="testSample('sample_mixed.tif')">🌊 sample_mixed.tif (~35%)</button>
+              <button class="preset-chip" onclick="testSample('sample_low_water.tif')">🏜️ sample_low_water.tif (~10%)</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upload Result View -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Segmentation Output</h3>
+            <a id="btn-download-mask" href="#" download="water_mask.png" style="display: none; font-size: 0.8rem; color: var(--accent); text-decoration: none; font-weight: 600;">Download Mask PNG ↓</a>
+          </div>
+
+          <div id="upload-placeholder" class="results-empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <h3>No File Processed Yet</h3>
+            <p>Upload a .tif file or select one of the test samples to view predicted masks.</p>
+          </div>
+
+          <div id="upload-results" class="result-content">
+            <div id="upload-water-banner" class="water-banner has-water">
+              <div class="water-status-text">
+                <h4 id="upload-banner-title">WATER DETECTED</h4>
+                <p id="upload-banner-subtitle">Binary mask computed successfully.</p>
+              </div>
+              <div id="upload-banner-pct" class="water-pct-badge">0%</div>
+            </div>
+
+            <div class="metrics-grid">
+              <div class="metric-card">
+                <div class="metric-label">Water Coverage</div>
+                <div class="metric-val" id="upload-pct">0%</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Water Pixels</div>
+                <div class="metric-val" id="upload-pixels">0</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Classification</div>
+                <div class="metric-val" id="upload-level">-</div>
+              </div>
+            </div>
+
+            <div class="visualizer-box">
+              <div class="image-viewport">
+                <img id="upload-mask-img" src="" alt="Mask output">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── TAB 3: API ENDPOINTS & DOCS ── -->
+    <section id="tab-api-docs" class="tab-pane">
+      <div class="hero">
+        <div class="hero-tag">Developer Documentation</div>
+        <h2 class="hero-title">REST API <span>Specification</span></h2>
+        <p class="hero-desc">The Flask backend exposes three main inference endpoints accepting both multipart file uploads and raw coordinates for Planetary Computer integration.</p>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+        <!-- Endpoint 1 -->
+        <div class="card">
+          <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--accent); margin-bottom: 0.5rem;">POST /predict_location</h3>
+          <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.75rem;">Fetches live Sentinel-2 multispectral imagery from Microsoft Planetary Computer STAC API for the given coordinates and runs neural inference.</p>
+          <div class="code-snippet">
+curl -X POST http://localhost:5000/predict_location \
+  -H "Content-Type: application/json" \
+  -d '{"lat": 30.56, "lon": 32.28, "days_back": 120, "cloud_max": 30}'
+          </div>
+        </div>
+
+        <!-- Endpoint 2 -->
+        <div class="card">
+          <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--accent); margin-bottom: 0.5rem;">POST /predict</h3>
+          <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.75rem;">Accepts a multipart file upload (.tif/.tiff), performs model inference, and directly streams back the binary water mask as a PNG image.</p>
+          <div class="code-snippet">
+curl -X POST http://localhost:5000/predict \
+  -F "file=@test_samples/sample_high_water.tif" \
+  --output water_mask.png
+          </div>
+        </div>
+
+        <!-- Endpoint 3 -->
+        <div class="card">
+          <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--accent); margin-bottom: 0.5rem;">POST /predict_json</h3>
+          <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.75rem;">Accepts a multipart file upload and returns detailed JSON metrics along with Base64-encoded binary mask and RGB false-color overlay.</p>
+          <div class="code-snippet">
+curl -X POST http://localhost:5000/predict_json \
+  -F "file=@test_samples/sample_high_water.tif"
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Leaflet Map JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    // State management
+    let map = null;
+    let marker = null;
+    let currentLat = 30.56;
+    let currentLon = 32.28;
+    let lastPlanetaryResult = null;
+    let currentVizMode = 'overlay';
+
+    // Tab switching
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+      
+      const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.textContent.toLowerCase().includes(tabName));
+      if (activeBtn) activeBtn.classList.add('active');
+      
+      const targetPane = document.getElementById('tab-' + tabName);
+      if (targetPane) targetPane.classList.add('active');
+
+      if (tabName === 'planetary' && map) {
+        setTimeout(() => map.invalidateSize(), 150);
+      }
+    }
+
+    // Initialize Leaflet Map
+    function initMap() {
+      map = L.map('map', {
+        center: [currentLat, currentLon],
+        zoom: 10,
+        zoomControl: true
+      });
+
+      // Base tile layers (no API key required)
+      const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri, Maxar, Earthstar Geographics',
+        maxZoom: 18
+      });
+
+      const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19
+      });
+
+      satellite.addTo(map);
+
+      // Layer control
+      L.control.layers({
+        '🛰️ Satellite View': satellite,
+        '🗺️ Street Map': street
+      }, null, { position: 'topright' }).addTo(map);
+
+      // Custom marker icon
+      const customIcon = L.divIcon({
+        className: 'custom-pin',
+        html: `<div style="width:20px;height:20px;border-radius:50%;background:#38bdf8;border:3px solid #fff;box-shadow:0 0 14px rgba(56,189,248,0.8);transform:translate(-50%,-50%);"></div>`,
+        iconSize: [20, 20]
+      });
+
+      marker = L.marker([currentLat, currentLon], { icon: customIcon, draggable: true }).addTo(map);
+
+      // Map click handler
+      map.on('click', (e) => {
+        updateTargetCoords(e.latlng.lat, e.latlng.lng);
+      });
+
+      marker.on('dragend', (e) => {
+        const pos = e.target.getLatLng();
+        updateTargetCoords(pos.lat, pos.lng);
+      });
+    }
+
+    function updateTargetCoords(lat, lon) {
+      currentLat = parseFloat(lat.toFixed(4));
+      currentLon = parseFloat(lon.toFixed(4));
+      marker.setLatLng([currentLat, currentLon]);
+      document.getElementById('input-lat').value = currentLat;
+      document.getElementById('input-lon').value = currentLon;
+      document.getElementById('coords-display').textContent = `${Math.abs(currentLat)}° ${currentLat >= 0 ? 'N' : 'S'}, ${Math.abs(currentLon)}° ${currentLon >= 0 ? 'E' : 'W'}`;
+    }
+
+    function updateMarkerFromInputs() {
+      const lat = parseFloat(document.getElementById('input-lat').value);
+      const lon = parseFloat(document.getElementById('input-lon').value);
+      if (!isNaN(lat) && !isNaN(lon)) {
+        updateTargetCoords(lat, lon);
+        map.setView([lat, lon], map.getZoom());
+      }
+    }
+
+    function setPreset(lat, lon, label) {
+      updateTargetCoords(lat, lon);
+      map.setView([lat, lon], 11);
+    }
+
+    // Call Planetary Computer API
+    async function runPlanetaryInference() {
+      const btn = document.getElementById('btn-fetch-pc');
+      const progress = document.getElementById('pc-progress');
+      const placeholder = document.getElementById('results-placeholder');
+      const resultsPanel = document.getElementById('results-panel');
+      const statusTag = document.getElementById('result-status-tag');
+
+      btn.disabled = true;
+      progress.classList.add('show');
+      placeholder.style.display = 'none';
+      resultsPanel.classList.remove('show');
+      statusTag.textContent = 'Processing...';
+
+      // Animate progress steps
+      const setStep = (stepIdx) => {
+        for (let i = 1; i <= 4; i++) {
+          const el = document.getElementById('step-' + i);
+          if (i < stepIdx) {
+            el.className = 'step-item done';
+            el.querySelector('.step-icon').textContent = '✓';
+          } else if (i === stepIdx) {
+            el.className = 'step-item active';
+            el.querySelector('.step-icon').textContent = '●';
+          } else {
+            el.className = 'step-item';
+            el.querySelector('.step-icon').textContent = '○';
+          }
+        }
+      };
+
+      setStep(1);
+      setTimeout(() => setStep(2), 1200);
+      setTimeout(() => setStep(3), 2400);
+
+      try {
+        const response = await fetch('/predict_location', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lat: currentLat,
+            lon: currentLon,
+            days_back: 120,
+            cloud_max: 30
+          })
+        });
+
+        setStep(4);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Server error occurred');
+        }
+
+        lastPlanetaryResult = data;
+        displayPlanetaryResults(data);
+        statusTag.textContent = 'Completed';
+      } catch (err) {
+        alert('Error: ' + err.message);
+        placeholder.style.display = 'block';
+        statusTag.textContent = 'Error';
+      } finally {
+        btn.disabled = false;
+        progress.classList.remove('show');
+      }
+    }
+
+    function displayPlanetaryResults(data) {
+      const resultsPanel = document.getElementById('results-panel');
+      const banner = document.getElementById('water-banner');
+      const bannerTitle = document.getElementById('banner-title');
+      const bannerSub = document.getElementById('banner-subtitle');
+      const bannerPct = document.getElementById('banner-pct');
+
+      // Update banner
+      const hasWater = data.has_water;
+      banner.className = 'water-banner ' + (hasWater ? 'has-water' : 'no-water');
+      bannerTitle.textContent = hasWater ? 'WATER DETECTED 🌊' : 'NO WATER DETECTED 🏜️';
+      bannerSub.textContent = hasWater ?
+        `Definite water body detected (${data.water_percentage}% of analyzed region).` :
+        `Arid / land surface detected (${data.water_percentage}% water).`;
+      bannerPct.textContent = data.water_percentage + '%';
+
+      // Update metrics
+      document.getElementById('metric-pct').textContent = data.water_percentage + '%';
+      document.getElementById('metric-level').textContent = data.water_level;
+      document.getElementById('metric-cloud').textContent = (data.cloud_cover !== undefined ? data.cloud_cover : 0) + '%';
+
+      // Update metadata
+      document.getElementById('meta-date').textContent = data.scene_date || 'N/A';
+      document.getElementById('meta-id').textContent = data.scene_id || 'N/A';
+      document.getElementById('meta-platform').textContent = data.platform || 'Sentinel-2';
+
+      // Show visualizer
+      setVizMode('overlay');
+      resultsPanel.classList.add('show');
+    }
+
+    function setVizMode(mode) {
+      currentVizMode = mode;
+      document.querySelectorAll('.viz-tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent.toLowerCase().includes(mode));
+      });
+
+      if (!lastPlanetaryResult) return;
+      const img = document.getElementById('viz-image');
+      if (mode === 'overlay' && lastPlanetaryResult.overlay_png_b64) {
+        img.src = 'data:image/png;base64,' + lastPlanetaryResult.overlay_png_b64;
+      } else if (mode === 'mask' && lastPlanetaryResult.mask_png_b64) {
+        img.src = 'data:image/png;base64,' + lastPlanetaryResult.mask_png_b64;
+      } else if (mode === 'satellite' && lastPlanetaryResult.rendered_preview) {
+        img.src = lastPlanetaryResult.rendered_preview;
+      } else if (lastPlanetaryResult.overlay_png_b64) {
+        img.src = 'data:image/png;base64,' + lastPlanetaryResult.overlay_png_b64;
+      }
+    }
+
+    // Local file upload handling
+    async function handleFileSelect(file) {
+      if (!file) return;
+      const formData = new FormData();
+      formData.append('file', file);
+      uploadAndPredict(formData);
+    }
+
+    async function testSample(sampleName) {
+      const response = await fetch('/static/test_samples/' + sampleName).catch(() => null);
+      // If static sample route not directly mapped, call predict_json with a mock or form
+      // Actually fetch the test file from server
+      const blob = await fetch('/test_samples/' + sampleName).then(r => r.blob()).catch(async () => {
+        // Fallback: create formData pointing to sample
+        return null;
+      });
+      if (blob) {
+        const formData = new FormData();
+        formData.append('file', blob, sampleName);
+        uploadAndPredict(formData);
+      } else {
+        // Direct fetch
+        alert(`Testing sample ${sampleName}... Uploading via API.`);
+        const fd = new FormData();
+        const f = new File([""], sampleName);
+        fd.append('file', f);
+      }
+    }
+
+    async function uploadAndPredict(formData) {
+      const placeholder = document.getElementById('upload-placeholder');
+      const results = document.getElementById('upload-results');
+      const dlBtn = document.getElementById('btn-download-mask');
+
+      try {
+        const response = await fetch('/predict_json', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Prediction failed');
+
+        placeholder.style.display = 'none';
+        results.classList.add('show');
+
+        document.getElementById('upload-pct').textContent = data.water_percentage + '%';
+        document.getElementById('upload-pixels').textContent = data.water_pixels.toLocaleString();
+        document.getElementById('upload-level').textContent = data.water_level;
+        document.getElementById('upload-banner-pct').textContent = data.water_percentage + '%';
+
+        const banner = document.getElementById('upload-water-banner');
+        banner.className = 'water-banner ' + (data.has_water ? 'has-water' : 'no-water');
+        document.getElementById('upload-banner-title').textContent = data.has_water ? 'WATER DETECTED' : 'NO WATER DETECTED';
+
+        const maskImg = document.getElementById('upload-mask-img');
+        maskImg.src = 'data:image/png;base64,' + data.overlay_png_b64;
+
+        dlBtn.style.display = 'inline-block';
+        dlBtn.href = 'data:image/png;base64,' + data.mask_png_b64;
+      } catch (err) {
+        alert('Upload Error: ' + err.message);
+      }
+    }
+
+    // Initialize on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      initMap();
+    });
+  </script>
+</body>
+</html>
